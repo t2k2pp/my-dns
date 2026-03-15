@@ -1,0 +1,11 @@
+# DNS Blocklist
+# One domain per line.  Blank lines and lines starting with # are ignored.
+# Entries use suffix matching: "example.com" also blocks "sub.example.com".
+#
+# Sections:
+#   MANUAL  – entries added by hand
+#   AUTO    – entries appended automatically by the auto-learn feature
+#
+# ---- MANUAL ----
+
+# ---- AUTO ----

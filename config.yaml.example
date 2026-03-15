@@ -1,0 +1,39 @@
+# DNS Server Configuration
+# Copy this file to config.yaml and adjust as needed.
+# Any key omitted here falls back to the compiled-in default.
+
+# IP address to listen on.
+# Use "0.0.0.0" to listen on all interfaces, or specify the LAN IP
+# of the host so that only local clients can reach the server.
+listen_ip: "0.0.0.0"
+
+# UDP port for DNS. Change to a high port (e.g. 5353) for testing
+# without root/CAP_NET_BIND_SERVICE privileges.
+listen_port: 53
+
+# Upstream DNS server in "ip:port" form.
+# NextDNS example — replace with your own configuration ID endpoint.
+upstream_dns: "45.90.28.0:53"
+
+# Path to the blocklist text file (one domain per line, # for comments).
+blocklist_file: "blocklist.txt"
+
+# Path to the CSV query log.
+log_file: "query.log"
+
+# Maximum log file size in bytes before rotation + ZIP compression (default 10 MB).
+log_max_bytes: 10485760
+
+# DNS response cache TTL in seconds (default 300 = 5 minutes).
+cache_ttl: 300
+
+# How often (in seconds) to check whether blocklist_file has changed on disk
+# and reload it automatically. Set to 0 to disable auto-reload.
+blocklist_reload_interval: 60
+
+# Timeout in seconds for forwarded DNS queries to the upstream server.
+upstream_timeout_sec: 5
+
+# Address for the management HTTP API (health, metrics, reload, cache flush).
+# Restrict to loopback so it is never exposed to the LAN.
+management_addr: "127.0.0.1:8080"
