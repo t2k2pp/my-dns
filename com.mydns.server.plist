@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mydns.server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/osia/Documents/claude/my-dns/bin/dns-server</string>
+        <string>-config</string>
+        <string>/Users/osia/Documents/claude/my-dns/config.yaml</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/osia/Documents/claude/my-dns</string>
+
+    <!-- ポート53はroot権限が必要 -->
+    <key>UserName</key>
+    <string>root</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/osia/Documents/claude/my-dns/dns-server.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/osia/Documents/claude/my-dns/dns-server-error.log</string>
+</dict>
+</plist>

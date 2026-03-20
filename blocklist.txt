@@ -1,0 +1,40 @@
+# DNS Blocklist
+# 1行1ドメイン。# はコメント、空行は無視。
+# サフィックスマッチ: "example.com" は "sub.example.com" もブロック。
+#
+# ---- MANUAL ----
+
+# === YouTube ===
+# ブロックしたい場合はコメントを外す (#を削除)
+# 注意: AdGuard DNS Family は YouTube を Safe Mode にするが完全ブロックはしない
+#       完全にブロックしたい場合はここで有効にする
+
+youtube.com
+youtu.be
+googlevideo.com
+ytimg.com
+yt3.ggpht.com
+youtubei.googleapis.com
+
+# === TikTok ===
+#tiktok.com
+#tiktokv.com
+#musical.ly
+
+# === Instagram ===
+#instagram.com
+#cdninstagram.com
+
+# === Twitter/X ===
+#twitter.com
+#x.com
+#t.co
+
+# === ゲーム系 ===
+#roblox.com
+#fortnite.com
+
+# === その他 ===
+# ここに追加していく
+
+# ---- AUTO ----

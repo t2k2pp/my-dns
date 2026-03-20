@@ -1,0 +1,11 @@
+# Build output
+bin/
+
+# Runtime files (generated at startup)
+query.log
+query.log.*.zip
+dns-server.log
+dns-server-error.log
+
+# OS
+.DS_Store

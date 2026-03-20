@@ -1,0 +1,29 @@
+# DNS Server 設定 (アクティブ設定)
+# このファイルは make switch-nextdns / make switch-adguard で自動生成される
+# 直接編集しても構わないが、次回 switch 時に上書きされる
+#
+# 現在のプロバイダー: NextDNS
+# -------------------------------------------------------
+# NextDNS 事前準備:
+#   1. https://nextdns.io でアカウント作成・無料登録
+#   2. ダッシュボードの「Setup」タブで専用IPを確認
+#   3. upstream_dns をそのIPに変更して make switch-nextdns を再実行
+# -------------------------------------------------------
+
+listen_ip: "0.0.0.0"
+listen_port: 53
+
+# ★ NextDNS: 自分のConfiguration IDのIPに変更する
+upstream_dns: "45.90.28.0:53"
+
+blocklist_file: "blocklist.txt"
+log_file: "query.log"
+log_max_bytes: 10485760
+cache_ttl: 300
+blocklist_reload_interval: 60
+upstream_timeout_sec: 5
+management_addr: "127.0.0.1:8080"
+
+# NextDNS はブロック時に 0.0.0.0 を返す (自動学習に使用)
+block_detect_ips:
+  - "0.0.0.0"
