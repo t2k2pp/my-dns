@@ -34,6 +34,14 @@ youtubei.googleapis.com
 #roblox.com
 #fortnite.com
 
+# === LINE VOOM ===
+# VOOMの動画・コンテンツ配信をブロック（LINEメッセージは引き続き使用可能）
+linevoom.line.me
+voom-assets.line-scdn.net
+voom-obs.line-scdn.net
+# LINE ニュース・チャンネルもブロックしたい場合は以下のコメントを外す
+#ch-news.line-apps.com
+
 # === その他 ===
 # ここに追加していく
 

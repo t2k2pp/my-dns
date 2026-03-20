@@ -1,29 +1,30 @@
-# DNS Server 設定 (アクティブ設定)
-# このファイルは make switch-nextdns / make switch-adguard で自動生成される
-# 直接編集しても構わないが、次回 switch 時に上書きされる
-#
-# 現在のプロバイダー: NextDNS
+# NextDNS 設定
 # -------------------------------------------------------
-# NextDNS 事前準備:
+# 事前準備:
 #   1. https://nextdns.io でアカウント作成・無料登録
-#   2. ダッシュボードの「Setup」タブで専用IPを確認
-#   3. upstream_dns をそのIPに変更して make switch-nextdns を再実行
+#   2. 設定を作成すると6文字のConfiguration IDが発行される (例: abc123)
+#   3. ダッシュボードの「Setup」タブに専用IPが表示される
+#      例: 45.90.28.XXX と 45.90.30.XXX
+#   4. upstream_dns を自分のIPに書き換える
+#
+# NextDNS 無料枠: 300,000 queries/月/設定
+# 子供が複数いる場合は子供ごとに設定を作り、複数IPを使い分けることも可能
 # -------------------------------------------------------
 
 listen_ip: "0.0.0.0"
 listen_port: 53
 
-# ★ NextDNS: 自分のConfiguration IDのIPに変更する
-upstream_dns: "45.90.28.0:53"
+# ★ ここを自分のNextDNS IPに変更する (nextdns.io のSetupタブで確認)
+upstream_dns: "45.90.28.41:53"
 
-blocklist_file: "blocklist.txt"
-log_file: "query.log"
+blocklist_file: "/usr/local/etc/my-dns/blocklist.txt"
+log_file: "/var/log/my-dns/query.log"
 log_max_bytes: 10485760
 cache_ttl: 300
 blocklist_reload_interval: 60
 upstream_timeout_sec: 5
 management_addr: "127.0.0.1:8080"
 
-# NextDNS はブロック時に 0.0.0.0 を返す (自動学習に使用)
+# NextDNS はブロック時に 0.0.0.0 を返す
 block_detect_ips:
   - "0.0.0.0"

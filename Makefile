@@ -1,10 +1,12 @@
-BINDIR   := ./bin
-LDFLAGS  := -s -w
+BINDIR        := ./bin
+CONFDIR       := /usr/local/etc/my-dns
+LOGDIR        := /var/log/my-dns
+LDFLAGS       := -s -w
 LAUNCHD_LABEL := com.mydns.server
 LAUNCHD_PLIST := /Library/LaunchDaemons/$(LAUNCHD_LABEL).plist
 
 .PHONY: all build dns-server log-analyzer bl-manager clean run install tidy vet \
-        switch-nextdns switch-adguard status reload-blocklist
+        switch-nextdns switch-adguard status reload-blocklist setup-system
 
 all: build
 
@@ -23,9 +25,24 @@ bl-manager:
 	@mkdir -p $(BINDIR)
 	go build $(LDFLAGS:%=-ldflags "%") -o $(BINDIR)/bl-manager ./cmd/bl-manager
 
-## run – start dns-server (requires config.yaml; uses sudo for port 53)
+## setup-system – 初回セットアップ: 設定・ログディレクトリ作成、設定ファイルをシステムへ配置
+setup-system:
+	sudo mkdir -p $(CONFDIR) $(LOGDIR)
+	sudo cp config.yaml config.nextdns.yaml config.adguard.yaml blocklist.txt $(CONFDIR)/
+	sudo sh -c 'chmod 640 $(CONFDIR)/*.yaml'
+	sudo chmod 644 $(CONFDIR)/blocklist.txt
+	sudo chown -R root:wheel $(CONFDIR) $(LOGDIR)
+	sudo chmod 750 $(CONFDIR) $(LOGDIR)
+	sudo cp com.mydns.server.plist $(LAUNCHD_PLIST)
+	@echo "✓ $(CONFDIR) と $(LOGDIR) をセットアップしました"
+	@echo "✓ plist を $(LAUNCHD_PLIST) に配置しました"
+	@echo ""
+	@echo "次のコマンドでサービスを起動してください:"
+	@echo "  sudo launchctl load $(LAUNCHD_PLIST)"
+
+## run – start dns-server locally (requires sudo for port 53)
 run: build
-	sudo $(BINDIR)/dns-server -config config.yaml
+	sudo $(BINDIR)/dns-server -config $(CONFDIR)/config.yaml
 
 ## install – copy binaries to /usr/local/bin (requires sudo)
 install: build
@@ -42,46 +59,51 @@ tidy:
 vet:
 	go vet ./...
 
-## switch-nextdns – config.yaml を NextDNS 用に切り替えてサービスを再起動
+## switch-nextdns – NextDNS 用設定に切り替えてサービスを再起動
 switch-nextdns:
-	cp config.nextdns.yaml config.yaml
+	sudo cp config.nextdns.yaml $(CONFDIR)/config.yaml
+	sudo chmod 640 $(CONFDIR)/config.yaml
 	@echo "✓ config.yaml を NextDNS 設定に切り替えました"
-	@echo "  upstream_dns: $$(grep upstream_dns config.yaml | awk '{print $$2}')"
-	@echo "  block_detect_ips: $$(grep -A2 block_detect_ips config.yaml | grep '\-' | awk '{print $$2}' | tr '\n' ' ')"
+	@echo "  upstream_dns: $$(sudo grep upstream_dns $(CONFDIR)/config.yaml | awk '{print $$2}')"
+	@echo "  block_detect_ips: $$(sudo grep -A2 block_detect_ips $(CONFDIR)/config.yaml | grep '\-' | awk '{print $$2}' | tr '\n' ' ')"
 	@if sudo launchctl list $(LAUNCHD_LABEL) > /dev/null 2>&1; then \
 		sudo launchctl stop $(LAUNCHD_LABEL) && sleep 1 && sudo launchctl start $(LAUNCHD_LABEL); \
 		echo "✓ サービスを再起動しました"; \
 	else \
 		echo "  (launchd 未登録のためサービス再起動はスキップ)"; \
-		echo "  手動起動: sudo ./bin/dns-server -config config.yaml"; \
+		echo "  手動起動: make run"; \
 	fi
 
-## switch-adguard – config.yaml を AdGuard DNS Family 用に切り替えてサービスを再起動
+## switch-adguard – AdGuard DNS Family 用設定に切り替えてサービスを再起動
 switch-adguard:
-	cp config.adguard.yaml config.yaml
+	sudo cp config.adguard.yaml $(CONFDIR)/config.yaml
+	sudo chmod 640 $(CONFDIR)/config.yaml
 	@echo "✓ config.yaml を AdGuard DNS Family 設定に切り替えました"
-	@echo "  upstream_dns: $$(grep upstream_dns config.yaml | awk '{print $$2}')"
-	@echo "  block_detect_ips: $$(grep -A3 block_detect_ips config.yaml | grep '\-' | awk '{print $$2}' | tr '\n' ' ')"
+	@echo "  upstream_dns: $$(sudo grep upstream_dns $(CONFDIR)/config.yaml | awk '{print $$2}')"
+	@echo "  block_detect_ips: $$(sudo grep -A3 block_detect_ips $(CONFDIR)/config.yaml | grep '\-' | awk '{print $$2}' | tr '\n' ' ')"
 	@if sudo launchctl list $(LAUNCHD_LABEL) > /dev/null 2>&1; then \
 		sudo launchctl stop $(LAUNCHD_LABEL) && sleep 1 && sudo launchctl start $(LAUNCHD_LABEL); \
 		echo "✓ サービスを再起動しました"; \
 	else \
 		echo "  (launchd 未登録のためサービス再起動はスキップ)"; \
-		echo "  手動起動: sudo ./bin/dns-server -config config.yaml"; \
+		echo "  手動起動: make run"; \
 	fi
 
 ## status – DNS サーバーのメトリクスと現在の設定を表示
 status:
-	@echo "=== 現在の設定 ==="
-	@echo "  プロバイダー upstream_dns: $$(grep upstream_dns config.yaml | awk '{print $$2}')"
-	@echo "  block_detect_ips: $$(grep -A3 block_detect_ips config.yaml | grep '\-' | awk '{print $$2}' | tr '\n' ' ')"
+	@echo "=== 現在の設定 ($(CONFDIR)/config.yaml) ==="
+	@sudo grep upstream_dns $(CONFDIR)/config.yaml 2>/dev/null || echo "  (設定ファイルが見つかりません。make setup-system を実行してください)"
+	@sudo grep -A3 block_detect_ips $(CONFDIR)/config.yaml 2>/dev/null || true
 	@echo ""
 	@echo "=== サーバーメトリクス ==="
 	@curl -sf http://127.0.0.1:8080/metrics 2>/dev/null | python3 -m json.tool || echo "  (サーバーが起動していないか管理APIに接続できません)"
 
 ## reload-blocklist – blocklist.txt を即時リロード (サーバー再起動不要)
 reload-blocklist:
+	sudo cp blocklist.txt $(CONFDIR)/blocklist.txt
+	sudo chmod 644 $(CONFDIR)/blocklist.txt
 	@curl -sf -X POST http://127.0.0.1:8080/reload | python3 -m json.tool
+	@echo "✓ ブロックリストをリロードしました"
 
 ## clean – remove build artefacts
 clean:
