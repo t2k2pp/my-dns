@@ -6,7 +6,7 @@ LAUNCHD_LABEL := com.mydns.server
 LAUNCHD_PLIST := /Library/LaunchDaemons/$(LAUNCHD_LABEL).plist
 
 .PHONY: all build dns-server log-analyzer bl-manager clean run install tidy vet \
-        switch-nextdns switch-adguard status reload-blocklist setup-system
+        switch-nextdns switch-adguard status reload-blocklist push-blocklist setup-system webui
 
 all: build
 
@@ -98,12 +98,25 @@ status:
 	@echo "=== サーバーメトリクス ==="
 	@curl -sf http://127.0.0.1:8080/metrics 2>/dev/null | python3 -m json.tool || echo "  (サーバーが起動していないか管理APIに接続できません)"
 
-## reload-blocklist – blocklist.txt を即時リロード (サーバー再起動不要)
+## reload-blocklist – サーバーに現在のシステムBLを再読み込みさせる（AUTO_LEARNEDを保持）
+## ※ ローカルblocklist.txtの変更を反映したい場合は push-blocklist を使う
 reload-blocklist:
+	@curl -sf -X POST http://127.0.0.1:8080/reload | python3 -m json.tool
+	@echo "✓ ブロックリストをリロードしました"
+
+## push-blocklist – ローカルblocklist.txtをシステムに上書きコピー＋リロード
+## ⚠ AUTO_LEARNEDエントリが消えます。手動で追加したドメインを反映する際に使う
+push-blocklist:
 	sudo cp blocklist.txt $(CONFDIR)/blocklist.txt
 	sudo chmod 644 $(CONFDIR)/blocklist.txt
 	@curl -sf -X POST http://127.0.0.1:8080/reload | python3 -m json.tool
-	@echo "✓ ブロックリストをリロードしました"
+	@echo "✓ ブロックリストを上書きしました（AUTO_LEARNEDは消えました）"
+
+## webui – Web管理UI を起動 (ログ読み込みのため sudo が必要)
+webui:
+	@which python3 > /dev/null || (echo "python3 が見つかりません" && exit 1)
+	@python3 -c "import flask" 2>/dev/null || (echo "flask が未インストールです。先に実行: pip3 install flask requests" && exit 1)
+	cd webui && sudo python3 app.py
 
 ## clean – remove build artefacts
 clean:

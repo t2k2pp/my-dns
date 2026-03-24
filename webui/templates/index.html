@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="ja" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>my-dns 管理UI</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    body { font-size: 0.9rem; }
+    .nav-link { cursor: pointer; }
+    pre { font-size: 0.78rem; white-space: pre-wrap; word-break: break-all; max-height: 60vh; overflow-y: auto; }
+    .metric-card .display-6 { font-size: 1.6rem; }
+    .metric-card { transition: transform .15s; }
+    .metric-card:hover { transform: translateY(-2px); }
+    .badge-action { font-size: 0.7rem; }
+    #spinner { display: none; }
+    .blocked-row td { color: #ff6b6b; }
+    .provider-badge { font-size: 0.75rem; }
+    .table-sm td, .table-sm th { padding: 0.25rem 0.5rem; }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary">
+  <div class="container-fluid">
+    <span class="navbar-brand fw-bold"><i class="bi bi-shield-check text-success"></i> my-dns 管理UI</span>
+    <div class="d-flex align-items-center gap-2">
+      <span id="server-status-badge" class="badge bg-secondary">確認中…</span>
+      <small id="spinner" class="text-secondary"><i class="bi bi-arrow-clockwise spin"></i></small>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid py-3">
+  <!-- Tab Navigation -->
+  <ul class="nav nav-tabs mb-3" id="mainTabs">
+    <li class="nav-item">
+      <a class="nav-link active" data-tab="status"><i class="bi bi-speedometer2"></i> ステータス</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" data-tab="logs"><i class="bi bi-journal-text"></i> ログ解析</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" data-tab="blocklist"><i class="bi bi-ban"></i> ブロックリスト</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" data-tab="settings"><i class="bi bi-gear"></i> DNS設定</a>
+    </li>
+  </ul>
+
+  <!-- Toast -->
+  <div class="position-fixed top-0 end-0 p-3" style="z-index:9999">
+    <div id="toast" class="toast align-items-center border-0" role="alert">
+      <div class="d-flex">
+        <div class="toast-body" id="toast-body"></div>
+        <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: Status ===== -->
+  <div id="tab-status" class="tab-pane">
+    <div class="row g-3 mb-4" id="metric-cards">
+      <div class="col text-center text-secondary py-4">読み込み中…</div>
+    </div>
+    <div class="d-flex gap-2 mb-3">
+      <button class="btn btn-outline-primary btn-sm" onclick="loadStatus()">
+        <i class="bi bi-arrow-clockwise"></i> 更新
+      </button>
+      <button class="btn btn-outline-warning btn-sm" onclick="flushCache()">
+        <i class="bi bi-trash3"></i> キャッシュクリア
+      </button>
+    </div>
+  </div>
+
+  <!-- ===== TAB: Logs ===== -->
+  <div id="tab-logs" class="tab-pane d-none">
+    <div class="row g-2 mb-3">
+      <div class="col-auto">
+        <div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-secondary" onclick="loadLog('summary')">サマリー</button>
+          <button class="btn btn-outline-secondary" onclick="loadLog('top-domains')">上位ドメイン</button>
+          <button class="btn btn-outline-secondary" onclick="loadLog('top-blocked')">ブロック上位</button>
+          <button class="btn btn-outline-secondary" onclick="loadLog('top-clients')">クライアント</button>
+          <button class="btn btn-outline-secondary" onclick="loadLog('timeline')">タイムライン</button>
+          <button class="btn btn-outline-secondary" onclick="loadTail()">最新50件</button>
+        </div>
+      </div>
+    </div>
+    <!-- Search -->
+    <div class="input-group input-group-sm mb-3" style="max-width:400px">
+      <input type="text" class="form-control" id="log-search-input" placeholder="ドメイン検索（例: youtube）"
+             onkeydown="if(event.key==='Enter') searchLog()">
+      <button class="btn btn-primary" onclick="searchLog()"><i class="bi bi-search"></i> 検索</button>
+    </div>
+    <!-- Log output: structured table or plain text -->
+    <div id="log-table-area" class="d-none">
+      <table class="table table-dark table-hover table-sm" id="log-table">
+        <thead id="log-table-head"></thead>
+        <tbody id="log-table-body"></tbody>
+      </table>
+    </div>
+    <pre id="log-output" class="bg-dark border border-secondary rounded p-3 text-light">← ボタンを押してください</pre>
+  </div>
+
+  <!-- ===== TAB: Blocklist ===== -->
+  <div id="tab-blocklist" class="tab-pane d-none">
+    <!-- Add form -->
+    <div class="card bg-dark border-secondary mb-3">
+      <div class="card-body py-2">
+        <div class="input-group input-group-sm" style="max-width:400px">
+          <span class="input-group-text"><i class="bi bi-plus-circle"></i></span>
+          <input type="text" class="form-control" id="bl-add-input" placeholder="追加するドメイン（例: tiktok.com）"
+                 onkeydown="if(event.key==='Enter') addDomain()">
+          <button class="btn btn-danger" onclick="addDomain()">ブロック追加</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mb-2 flex-wrap">
+      <button class="btn btn-outline-primary btn-sm" onclick="loadBlocklist()">
+        <i class="bi bi-arrow-clockwise"></i> 再読み込み
+      </button>
+      <button class="btn btn-outline-success btn-sm" onclick="reloadBlocklist()">
+        <i class="bi bi-upload"></i> サーバーに反映
+      </button>
+      <button class="btn btn-outline-warning btn-sm" onclick="backupBlocklist()" title="AUTO_LEARNED含む現在のBLをgit管理のローカルファイルに書き戻す">
+        <i class="bi bi-floppy"></i> Gitバックアップ
+      </button>
+      <span class="text-secondary small align-self-center ms-2" id="bl-count"></span>
+    </div>
+    <div class="alert alert-info py-1 px-2 small mb-2">
+      <i class="bi bi-info-circle"></i>
+      表示しているのは <code>/usr/local/etc/my-dns/blocklist.txt</code>（NextDNSでブロックされたAUTO_LEARNEDも含む）
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-dark table-hover table-sm" id="bl-table">
+        <thead><tr><th>ドメイン</th><th style="width:80px">操作</th></tr></thead>
+        <tbody id="bl-tbody">
+          <tr><td colspan="2" class="text-secondary text-center">読み込み中…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== TAB: Settings ===== -->
+  <div id="tab-settings" class="tab-pane d-none">
+    <div class="row g-3">
+      <!-- Provider Switch -->
+      <div class="col-md-6">
+        <div class="card bg-dark border-secondary h-100">
+          <div class="card-header border-secondary">
+            <i class="bi bi-arrow-left-right"></i> DNSプロバイダー切替
+          </div>
+          <div class="card-body">
+            <p class="text-secondary small">切替後、launchdサービスが自動再起動されます。</p>
+            <div class="d-grid gap-2">
+              <button class="btn btn-primary" onclick="switchProvider('nextdns')">
+                <i class="bi bi-shield-fill-check text-info"></i> NextDNS に切替
+                <small class="d-block text-white-50">45.90.28.41:53</small>
+              </button>
+              <button class="btn btn-success" onclick="switchProvider('adguard')">
+                <i class="bi bi-shield-fill-plus text-success"></i> AdGuard Family に切替
+                <small class="d-block text-white-50">94.140.14.15:53</small>
+              </button>
+            </div>
+            <pre id="switch-output" class="mt-3 bg-black rounded p-2 text-success small d-none"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cache & Reload -->
+      <div class="col-md-6">
+        <div class="card bg-dark border-secondary h-100">
+          <div class="card-header border-secondary">
+            <i class="bi bi-tools"></i> 操作
+          </div>
+          <div class="card-body d-grid gap-2">
+            <button class="btn btn-outline-warning" onclick="flushCache()">
+              <i class="bi bi-trash3"></i> DNSキャッシュをクリア
+            </button>
+            <button class="btn btn-outline-info" onclick="reloadBlocklist()">
+              <i class="bi bi-upload"></i> ブロックリストをサーバーに反映
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<style>
+.spin { animation: spin 1s linear infinite; display: inline-block; }
+@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+</style>
+<script>
+// ----------------------------------------------------------------
+// Tab switching
+// ----------------------------------------------------------------
+document.querySelectorAll('[data-tab]').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('[data-tab]').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('d-none'));
+    el.classList.add('active');
+    const pane = document.getElementById('tab-' + el.dataset.tab);
+    pane.classList.remove('d-none');
+    // Auto-load on first show
+    if (el.dataset.tab === 'status') loadStatus();
+    if (el.dataset.tab === 'blocklist') loadBlocklist();
+  });
+});
+
+// ----------------------------------------------------------------
+// Toast helper
+// ----------------------------------------------------------------
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.className = `toast align-items-center text-bg-${type} border-0`;
+  document.getElementById('toast-body').textContent = msg;
+  bootstrap.Toast.getOrCreateInstance(el, { delay: 3000 }).show();
+}
+
+// ----------------------------------------------------------------
+// Spinner
+// ----------------------------------------------------------------
+let spinCount = 0;
+function spinOn()  { spinCount++; document.getElementById('spinner').style.display='inline'; }
+function spinOff() { spinCount = Math.max(0, spinCount-1); if(!spinCount) document.getElementById('spinner').style.display='none'; }
+
+// ----------------------------------------------------------------
+// API helper
+// ----------------------------------------------------------------
+async function apiFetch(url, opts = {}) {
+  spinOn();
+  try {
+    const res = await fetch(url, opts);
+    const data = await res.json();
+    return data;
+  } catch(e) {
+    toast('通信エラー: ' + e, 'danger');
+    return null;
+  } finally {
+    spinOff();
+  }
+}
+
+// ----------------------------------------------------------------
+// Status tab
+// ----------------------------------------------------------------
+async function loadStatus() {
+  const data = await apiFetch('/api/status');
+  const container = document.getElementById('metric-cards');
+  if (!data) return;
+
+  const m = data.metrics || {};
+  const h = data.health || {};
+  const err = m.error;
+
+  if (err) {
+    container.innerHTML = `<div class="col text-center text-danger py-4"><i class="bi bi-exclamation-triangle"></i> サーバーに接続できません<br><small>${err}</small></div>`;
+    document.getElementById('server-status-badge').className = 'badge bg-danger';
+    document.getElementById('server-status-badge').textContent = 'オフライン';
+    return;
+  }
+
+  document.getElementById('server-status-badge').className = 'badge bg-success';
+  document.getElementById('server-status-badge').textContent = `稼働中 ${h.uptime || ''}`;
+
+  const total = m.total || 0;
+  const blocked = (m.local_block || 0) + (m.auto_learned || 0);
+  const blockPct = total ? Math.round(blocked / total * 100) : 0;
+  const cards = [
+    { label: '総クエリ数',   val: fmt(m.total),          icon: 'bi-bar-chart',      color: 'primary' },
+    { label: 'ブロック',     val: `${fmt(blocked)} (${blockPct}%)`, icon: 'bi-ban', color: 'danger' },
+    { label: 'キャッシュ',  val: fmt(m.cached),          icon: 'bi-lightning',      color: 'warning' },
+    { label: '転送',         val: fmt(m.forwarded),       icon: 'bi-send',           color: 'info' },
+    { label: 'キャッシュ残',  val: fmt(m.cache_size),    icon: 'bi-database',       color: 'secondary' },
+    { label: 'BLエントリ',  val: fmt(m.blocklist_size),  icon: 'bi-list-ul',        color: 'secondary' },
+  ];
+  container.innerHTML = cards.map(c => `
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card metric-card bg-dark border-${c.color} text-center py-3">
+        <div class="card-body p-2">
+          <i class="bi ${c.icon} text-${c.color} fs-4"></i>
+          <div class="display-6 fw-bold mt-1">${c.val}</div>
+          <div class="text-secondary small">${c.label}</div>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function fmt(n) { return n == null ? '-' : Number(n).toLocaleString('ja-JP'); }
+
+// ----------------------------------------------------------------
+// Log tab
+// ----------------------------------------------------------------
+async function loadLog(cmd) {
+  const data = await apiFetch(`/api/logs/${cmd}`);
+  if (!data) return;
+  if (data.format === 'json' && data.data) {
+    renderLogTable(cmd, data.data);
+  } else {
+    showLogText(data.output || data.error || '(空)');
+  }
+}
+
+async function loadTail() {
+  const data = await apiFetch('/api/logs/tail?n=50');
+  if (!data) return;
+  if (data.format === 'json' && data.data) {
+    renderLogRecords(data.data);
+  } else {
+    showLogText(data.output || data.error || '(空)');
+  }
+}
+
+async function searchLog() {
+  const pattern = document.getElementById('log-search-input').value.trim();
+  if (!pattern) return;
+  const data = await apiFetch('/api/logs/search', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ pattern })
+  });
+  if (!data) return;
+  if (data.format === 'json' && data.data) {
+    renderLogRecords(data.data);
+  } else {
+    showLogText(data.output || data.error || '(空)');
+  }
+}
+
+function showLogText(text) {
+  document.getElementById('log-table-area').classList.add('d-none');
+  const pre = document.getElementById('log-output');
+  pre.classList.remove('d-none');
+  pre.textContent = text;
+}
+
+function showLogTable() {
+  document.getElementById('log-output').classList.add('d-none');
+  document.getElementById('log-table-area').classList.remove('d-none');
+}
+
+// action バッジ色
+const actionColor = {
+  'LOCAL_BLOCK':  'danger',
+  'AUTO_LEARNED': 'warning',
+  'FORWARDED':    'primary',
+  'CACHED':       'success',
+  'ERROR':        'dark',
+};
+
+// top-domains / top-blocked / top-clients の JSON → テーブル
+function renderLogTable(cmd, rows) {
+  showLogTable();
+  const head = document.getElementById('log-table-head');
+  const body = document.getElementById('log-table-body');
+
+  const isTopDomains = (cmd === 'top-domains' || cmd === 'top-blocked');
+  const colLabel = cmd === 'top-clients' ? 'クライアントIP' : 'ドメイン';
+
+  head.innerHTML = `<tr>
+    <th style="width:50px">順位</th>
+    <th>${colLabel}</th>
+    <th style="width:80px">回数</th>
+    ${isTopDomains ? '<th style="width:80px">操作</th>' : ''}
+  </tr>`;
+
+  body.innerHTML = rows.map(r => `
+    <tr>
+      <td class="text-secondary">${r.rank}</td>
+      <td><code>${r.name}</code></td>
+      <td>${r.count.toLocaleString('ja-JP')}</td>
+      ${isTopDomains ? `<td>
+        <button class="btn btn-outline-danger btn-sm py-0 px-1" title="ブロックに追加"
+          onclick="quickAddDomain('${r.name}')">
+          <i class="bi bi-ban"></i>
+        </button>
+      </td>` : ''}
+    </tr>`).join('');
+}
+
+// tail / search の JSON → テーブル（レコード一覧）
+function renderLogRecords(rows) {
+  showLogTable();
+  const head = document.getElementById('log-table-head');
+  const body = document.getElementById('log-table-body');
+
+  head.innerHTML = `<tr>
+    <th>日時</th>
+    <th>クライアント</th>
+    <th>QType</th>
+    <th>アクション</th>
+    <th>ドメイン</th>
+    <th style="width:70px">操作</th>
+  </tr>`;
+
+  body.innerHTML = rows.map(r => {
+    const color = actionColor[r.action] || 'secondary';
+    const ts = r.timestamp ? r.timestamp.replace('T',' ').replace('Z','') : '';
+    return `<tr>
+      <td class="text-secondary small">${ts}</td>
+      <td class="small">${r.client_ip || ''}</td>
+      <td class="small">${r.qtype || ''}</td>
+      <td><span class="badge bg-${color}">${r.action || ''}</span></td>
+      <td><code>${r.domain || ''}</code></td>
+      <td>
+        <button class="btn btn-outline-danger btn-sm py-0 px-1" title="ブロックに追加"
+          onclick="quickAddDomain('${r.domain}')">
+          <i class="bi bi-ban"></i>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ログ画面からワンクリックでブロックリストに追加
+async function quickAddDomain(domain) {
+  if (!domain) return;
+  if (!confirm(`"${domain}" をブロックリストに追加しますか？`)) return;
+  const data = await apiFetch('/api/blocklist/add', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ domain })
+  });
+  if (data && data.ok) {
+    toast(`ブロック追加: ${domain} ✓`);
+  } else {
+    toast((data && data.error) || '追加失敗', 'danger');
+  }
+}
+
+// ----------------------------------------------------------------
+// Blocklist tab
+// ----------------------------------------------------------------
+async function loadBlocklist() {
+  const data = await apiFetch('/api/blocklist');
+  if (!data) return;
+  const tbody = document.getElementById('bl-tbody');
+  const entries = data.entries || [];
+  document.getElementById('bl-count').textContent = `${entries.length} エントリ`;
+  if (entries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="2" class="text-secondary text-center">エントリなし</td></tr>';
+    return;
+  }
+  tbody.innerHTML = entries.map(e => `
+    <tr>
+      <td><code>${e}</code></td>
+      <td>
+        <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="removeDomain('${e}')">
+          <i class="bi bi-trash3"></i>
+        </button>
+      </td>
+    </tr>`).join('');
+}
+
+async function addDomain() {
+  const input = document.getElementById('bl-add-input');
+  const domain = input.value.trim();
+  if (!domain) return;
+  const data = await apiFetch('/api/blocklist/add', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ domain })
+  });
+  if (data && data.ok) {
+    toast(`追加: ${domain}`);
+    input.value = '';
+    await loadBlocklist();
+  } else {
+    toast((data && data.error) || '追加失敗', 'danger');
+  }
+}
+
+async function removeDomain(domain) {
+  if (!confirm(`${domain} をブロックリストから削除しますか？`)) return;
+  const data = await apiFetch('/api/blocklist/remove', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ domain })
+  });
+  if (data && data.ok) {
+    toast(`削除: ${domain}`, 'warning');
+    await loadBlocklist();
+  } else {
+    toast((data && data.error) || '削除失敗', 'danger');
+  }
+}
+
+async function reloadBlocklist() {
+  const data = await apiFetch('/api/blocklist/reload', { method: 'POST' });
+  if (data) toast(data.message || 'リロード完了', data.ok ? 'success' : 'danger');
+}
+
+async function backupBlocklist() {
+  const data = await apiFetch('/api/blocklist/backup', { method: 'POST' });
+  if (data) toast(data.message || 'バックアップ完了', data.ok ? 'success' : 'danger');
+}
+
+// ----------------------------------------------------------------
+// Settings tab
+// ----------------------------------------------------------------
+async function switchProvider(provider) {
+  const label = provider === 'nextdns' ? 'NextDNS' : 'AdGuard Family';
+  if (!confirm(`${label} に切り替えますか？\nサービスが再起動されます。`)) return;
+  const pre = document.getElementById('switch-output');
+  pre.textContent = '切替中…';
+  pre.classList.remove('d-none');
+  const data = await apiFetch(`/api/switch/${provider}`, { method: 'POST' });
+  if (data) {
+    pre.textContent = data.output || data.error || '完了';
+    toast(data.ok ? `${label} に切替完了` : '切替失敗', data.ok ? 'success' : 'danger');
+    if (data.ok) setTimeout(loadStatus, 2000);
+  }
+}
+
+async function flushCache() {
+  const data = await apiFetch('/api/cache/flush', { method: 'POST' });
+  if (data) toast(data.status === 'flushed' ? `キャッシュクリア: ${data.evicted} 件削除` : JSON.stringify(data));
+}
+
+// ----------------------------------------------------------------
+// Init
+// ----------------------------------------------------------------
+loadStatus();
+
+// Auto-refresh status every 30s when tab is visible
+setInterval(() => {
+  if (!document.getElementById('tab-status').classList.contains('d-none')) loadStatus();
+}, 30000);
+</script>
+</body>
+</html>
